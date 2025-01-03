@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Image Upscaler</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .upload-area.dragover {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+        #fileInput {
+            display: none;
+        }
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        #preview {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .preview-item {
+            position: relative;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .preview-item img {
+            width: 100%;
+            height: auto;
+        }
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress {
+            width: 0%;
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.3s ease;
+        }
+        .select-style {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Batch Image Upscaler</h1>
+        <div class="upload-area" id="dropZone">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="options-container" style="margin: 20px 0;">
+                    <label for="scale">Upscale Factor:</label>
+                    <select name="scale" id="scale" class="select-style">
+                        <option value="2">2x</option>
+                        <option value="4" selected>4x</option>
+                        <option value="8">8x</option>
+                    </select>
+                    
+                    <label style="margin-left: 20px;">
+                        <input type="checkbox" id="enhance" name="enhance" checked>
+                        Enhance Quality
+                    </label>
+                </div>
+                <input type="file" name="files[]" id="fileInput" multiple accept="image/*">
+                <button type="button" class="button" onclick="document.getElementById('fileInput').click()">
+                    Choose Files
+                </button>
+                <p>or drag and drop images here</p>
+            </form>
+        </div>
+        <div id="preview"></div>
+        <div class="progress-container" id="progressContainer">
+            <p>Processing images...</p>
+            <div class="progress-bar">
+                <div class="progress" id="progressBar"></div>
+            </div>
+        </div>
+        <button type="button" class="button" id="uploadButton" style="display: none;">
+            Upscale Images
+        </button>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const uploadButton = document.getElementById('uploadButton');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+
+        // Drag and drop handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            preview.innerHTML = '';
+            uploadButton.style.display = files.length ? 'block' : 'none';
+
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    const div = document.createElement('div');
+                    div.className = 'preview-item';
+                    
+                    reader.onload = (e) => {
+                        div.innerHTML = `
+                            <img src="${e.target.result}" alt="${file.name}">
+                            <p>${file.name}</p>
+                        `;
+                    };
+                    
+                    reader.readAsDataURL(file);
+                    preview.appendChild(div);
+                }
+            });
+        }
+
+        uploadButton.addEventListener('click', async () => {
+            const files = fileInput.files;
+            if (files.length === 0) return;
+
+            const formData = new FormData();
+            Array.from(files).forEach(file => {
+                formData.append('files[]', file);
+            });
+            formData.append('scale', document.getElementById('scale').value);
+            formData.append('enhance', document.getElementById('enhance').checked);
+
+            progressContainer.style.display = 'block';
+            uploadButton.disabled = true;
+
+            try {
+                const response = await fetch('/upscale', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'upscaled_images.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    throw new Error('Upload failed');
+                }
+            } catch (error) {
+                alert('Error processing images: ' + error.message);
+            } finally {
+                progressContainer.style.display = 'none';
+                uploadButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
